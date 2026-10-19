@@ -146,7 +146,7 @@ The board is an HTML review surface, not a markdown page pasted into a browser. 
 
 1. Run `lavish-axi --help`. Before writing HTML, run `lavish-axi design` and open every matching current playbook. This board needs at least `input`, `comparison`, and `table`; add `plan` when the meeting contains a substantial plan.
 2. Inspect the project being represented for an existing design system. If none exists, use the current CLI-recommended Tailwind browser runtime and DaisyUI versions; do not assume a stale version. Use semantic colors and responsive layout. Keep the HTML portable and self-contained apart from the documented CDN fallback.
-3. Write the artifact beside the meeting report in the active task's data directory (or a task-specific temporary directory during validation). Use semantic headings, `fieldset`/`legend`, labeled native radios, date inputs, textareas, buttons, `details` disclosures, visible focus states, keyboard operation, readable contrast, and status text that is not color-only. Keep long evidence and paths wrapped on narrow screens. Treat every transcript, repository, report, path, title, note, and citation value as untrusted: render it with DOM `textContent` (or an equivalent HTML-context encoder), never concatenate it into `innerHTML`, HTML attributes, or markup. Put data in JavaScript only through a JSON serializer that escapes `<`, `>`, `&`, U+2028, and U+2029 (so `</script>` cannot terminate an inline script), and never interpolate raw values into JavaScript, CSS, or event-handler source. Apply these rules to every value, including card data and receipt text.
+3. Write the artifact beside the meeting report in the active task's data directory (or a task-specific temporary directory during validation). Use semantic headings, `fieldset`/`legend`, labeled native radios, date inputs, textareas, buttons, `details` disclosures, visible focus states, keyboard operation, readable contrast, and status text that is not color-only. Keep long evidence and paths wrapped on narrow screens. Treat every transcript, repository, report, path, title, note, and citation value as untrusted: render it with DOM `textContent` (or an equivalent HTML-context encoder), never concatenate it into `innerHTML`, HTML attributes, or markup. Put data in JavaScript only through a post-serialization safe script-data encoder that escapes `<`, `>`, `&`, U+2028, and U+2029 (so `</script>` cannot terminate an inline script), and never interpolate raw values into JavaScript, CSS, or event-handler source. For example, use `safeScriptJson(value) { return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, c => ({"<":"\\u003c", ">":"\\u003e", "&":"\\u0026", "\u2028":"\\u2028", "\u2029":"\\u2029"}[c])); }` for every value embedded in an inline script; plain `JSON.stringify` is not sufficient. Apply these rules to every value, including card data and receipt text.
 4. Render a concise overview and evidence/hypothesis summary, then the actionable cards. Do not hide a card behind a filter or require interaction to see its current status/evidence.
 
 ### Card invariants
@@ -173,7 +173,7 @@ Use slugs for submitted values and human-readable labels for display. Do not aut
 
 ### Queue answers in the current Lavish format
 
-Use one `<form data-lavish-question="<key>">` per card. Radio changes only update local selection. On form submission, assemble the final prompt, display text, and context before calling `window.lavish.queuePrompt`. The current adapter bounds the answer payload at 512 bytes: serialize the complete queue envelope containing every card-derived title, selected label, note, key, selection, metadata, prompt, and display text, calculate its UTF-8 byte length with `TextEncoder`, and reject it before queueing when it exceeds 512 bytes. Do not silently truncate; preserve exact provenance by showing the user a local error and requiring a shorter note or card content. Validate the final serialized envelope rather than only `noteText`, and call `window.lavish.queuePrompt` exactly once only after that check. Use the versioned context expected by the current Firstmate adapter:
+Use one `<form data-lavish-question="<key>">` per card. Radio changes only update local selection. On form submission, assemble the final prompt, display text, and context before calling `window.lavish.queuePrompt`. The current adapter bounds the answer payload at 512 bytes: serialize the exact wire payload passed to `window.lavish.queuePrompt`—the `tag`, `text`, and `data` fields, excluding only the non-serialized DOM `element`—after assembling every card-derived title, selected label, note, key, selection, and metadata. Calculate its UTF-8 byte length with `TextEncoder`, and reject it before queueing when it exceeds 512 bytes. Do not silently truncate; preserve exact provenance by showing the user a local error and requiring a shorter note or card content. Validate this final serialized adapter payload rather than only `noteText`, and call `window.lavish.queuePrompt` exactly once only after that check. Use the versioned context expected by the current Firstmate adapter:
 
 ```js
 const ctxData = {
@@ -183,32 +183,25 @@ const ctxData = {
   note: noteText
 };
 if (card.close) ctxData.close = card.close;
+if (card.metadata) ctxData.metadata = card.metadata;
 const prompt = "Supervisor review - " + card.title + ": " + displayAnswer;
 const text = card.title + " -> choice: " + selectedLabel
   + "; note: " + (noteText || "(none)");
-const queueEnvelope = JSON.stringify({
-  prompt,
+const queuePayload = {
+  tag: "choice",
   text,
-  data: ctxData,
-  display: {
-    title: card.title,
-    selectedLabel,
-    note: noteText,
-    answer: displayAnswer
-  },
-  metadata: card.metadata || null
-});
-if (new TextEncoder().encode(queueEnvelope).length > 512) {
+  data: ctxData
+};
+const serializedQueuePayload = JSON.stringify(queuePayload);
+if (new TextEncoder().encode(serializedQueuePayload).length > 512) {
   showLocalError("This answer is too long to queue; shorten the note.");
   return;
 }
 window.lavish.queuePrompt(
   prompt,
   {
-    tag: "choice",
-    text,
-    element: form,
-    data: ctxData
+    ...queuePayload,
+    element: form
   }
 );
 ```
@@ -219,9 +212,10 @@ Include the selected human label and the exact note in `text`, not only the slug
 
 The only acceptable board host is the active Firstmate home's `config/lavish-axi-host`. Read and trim that file at run time; never hard-code today's `10.10.0.150`, and never substitute a tunnel or loopback address. Refuse/report a limitation when the value is blank, contains a scheme, is a hostname, `localhost`, a loopback address, a wildcard (`0.0.0.0` or `::`), a tunnel/public address, or another non-LAN value. For this workflow, fail closed unless the value is an exact IP literal in RFC1918 IPv4 space (`10/8`, `172.16/12`, or `192.168/16`) or IPv6 ULA space (`fc00::/7`); this deliberately rejects public, tunnel, link-local, and other non-LAN addresses.
 
-Validate before exporting, using the standard library rather than a string-prefix check:
+Validate before exporting, using the standard library rather than a string-prefix check. Make this shell sequence fail closed: if validation exits nonzero, stop before exporting the host or invoking `lavish-axi`.
 
 ```sh
+set -e
 lan_host=$(tr -d '[:space:]' < "$FM_HOME/config/lavish-axi-host")
 LAN_HOST="$lan_host" python3 - <<'PY'
 import ipaddress, os, sys
