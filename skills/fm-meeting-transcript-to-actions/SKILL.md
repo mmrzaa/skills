@@ -240,18 +240,41 @@ PY
 export LAVISH_AXI_HOST="$lan_host"
 export LAVISH_AXI_LINK_HOST="$lan_host"
 output=$(lavish-axi "$artifact.html" --no-open 2>&1)
-printf '%s\n' "$output"
+printed_url=$(LAN_HOST="$lan_host" LAN_OUTPUT="$output" python3 - <<'PY'
+import ipaddress, os, re, sys
+from urllib.parse import urlsplit
+
+host = os.environ["LAN_HOST"]
+try:
+    approved = ipaddress.ip_address(host)
+except ValueError:
+    sys.exit("LAN URL validation failed: configured host is not an IP literal")
+candidates = re.findall(r"https?://[^\s<>\"']+", os.environ["LAN_OUTPUT"])
+candidates = [candidate.rstrip(".,;") for candidate in candidates]
+if len(candidates) != 1:
+    sys.exit("LAN URL validation failed: session output did not contain exactly one URL")
+url = candidates[0]
+parts = urlsplit(url)
+try:
+    url_host = ipaddress.ip_address(parts.hostname or "")
+except ValueError:
+    sys.exit("LAN URL validation failed: URL host is not an IP literal")
+if (parts.scheme != "http" or parts.username or parts.password
+        or url_host != approved):
+    sys.exit("LAN URL validation failed: session URL is not the approved LAN host")
+print(url)
+PY
+)
+if ! curl --fail --silent --show-error --max-time 10 --output /dev/null "$printed_url" 2>/dev/null; then
+  printf '%s\n' "LAN URL reachability check failed; no usable URL was reported." >&2
+  exit 1
+fi
+printf 'LAN session URL: %s\n' "$printed_url"
 ```
 
 The exact current CLI help owns flags; do not invent an `open` subcommand. If a requested review is resuming a user-ended session, use the current help's explicit `--reopen` rule only when that review was requested. A worker-hosted production board stays open for review; do not end it immediately after printing the URL.
 
-Extract the URL from the **printed session output**, then fail closed unless all checks pass:
-
-- the URL is an `http://` session URL, not a tunnel or a forbidden loopback/wildcard URL;
-- its host is the approved `lan_host` (with normal bracket handling for IPv6), not merely the host on which the worker happens to run; and
-- `curl --fail --silent --show-error --max-time 10 --output /dev/null "$printed_url"` succeeds with an HTTP response.
-
-Only then report the URL. A successful local CLI invocation is not proof of a live LAN session: verify the server's URL and HTTP reachability. If the URL is absent, advertises a different host, or curl fails, report the concrete host/config/output/reachability limitation without printing a forbidden URL as a usable link. Leave the markdown analysis available so the supervisor can retry after the LAN issue is fixed.
+The sequence above extracts the URL from the **captured session output**, validates it silently, verifies HTTP reachability, and reports it only after all checks pass. It fails closed without printing a forbidden URL as a usable link when the URL is absent, ambiguous, advertises a different host, or curl fails. A successful local CLI invocation is not proof of a live LAN session: leave the markdown analysis available so the supervisor can retry after the LAN issue is fixed.
 
 ## Arm, answer, and return through Firstmate
 
