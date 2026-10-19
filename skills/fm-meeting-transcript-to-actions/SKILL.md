@@ -173,7 +173,7 @@ Use slugs for submitted values and human-readable labels for display. Do not aut
 
 ### Queue answers in the current Lavish format
 
-Use one `<form data-lavish-question="<key>">` per card. Radio changes only update local selection. On form submission, validate the note (the current adapter bounds the note/answer payload; keep the combined display text at or below 512 bytes), then call `window.lavish.queuePrompt` exactly once. Use the versioned context expected by the current Firstmate adapter:
+Use one `<form data-lavish-question="<key>">` per card. Radio changes only update local selection. On form submission, assemble the final prompt, display text, and context before calling `window.lavish.queuePrompt`. The current adapter bounds the answer payload at 512 bytes: serialize the complete queue envelope containing every card-derived title, selected label, note, key, selection, metadata, prompt, and display text, calculate its UTF-8 byte length with `TextEncoder`, and reject it before queueing when it exceeds 512 bytes. Do not silently truncate; preserve exact provenance by showing the user a local error and requiring a shorter note or card content. Validate the final serialized envelope rather than only `noteText`, and call `window.lavish.queuePrompt` exactly once only after that check. Use the versioned context expected by the current Firstmate adapter:
 
 ```js
 const ctxData = {
@@ -182,15 +182,31 @@ const ctxData = {
   selection: selectedValue || "",
   note: noteText
 };
-// A question-shaped decision normally closes its held call. A decision that
-// gates already-filed work may instead declare close: "release".
 if (card.close) ctxData.close = card.close;
+const prompt = "Supervisor review - " + card.title + ": " + displayAnswer;
+const text = card.title + " -> choice: " + selectedLabel
+  + "; note: " + (noteText || "(none)");
+const queueEnvelope = JSON.stringify({
+  prompt,
+  text,
+  data: ctxData,
+  display: {
+    title: card.title,
+    selectedLabel,
+    note: noteText,
+    answer: displayAnswer
+  },
+  metadata: card.metadata || null
+});
+if (new TextEncoder().encode(queueEnvelope).length > 512) {
+  showLocalError("This answer is too long to queue; shorten the note.");
+  return;
+}
 window.lavish.queuePrompt(
-  "Supervisor review - " + card.title + ": " + displayAnswer,
+  prompt,
   {
     tag: "choice",
-    text: card.title + " -> choice: " + selectedLabel
-      + "; note: " + (noteText || "(none)"),
+    text,
     element: form,
     data: ctxData
   }
