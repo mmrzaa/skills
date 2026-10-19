@@ -156,7 +156,7 @@
 - `backlog.1` — **Measure time/update-rate behavior before setting sensitivity**. Project `event-detection`, kind `scout`, route `Main home`, status `not started`. Dispositions are `approve-and-dispatch-now`, `approve-but-queue`, `park-until-date`, and `drop`.
 - `backlog.2` — **Bound a receiver-placement planning scout**. Project `event-detection`, kind `scout`, route `Main home`, status `not started`; the card identifies it as a future idea rather than a current commitment.
 
-The worker opens the HTML with the current `lavish-axi` command, sets `LAVISH_AXI_HOST` and `LAVISH_AXI_LINK_HOST` from `config/lavish-axi-host`, and reports the printed `http://10.10.0.150:<port>/session/...` URL only after `curl` succeeds. In a real run the worker binds the decision source before `bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>`; the validation run does not bind or arm.
+The worker reads and trims `config/lavish-axi-host` into `lan_host`, validates that private IP with the standard library, sets `LAVISH_AXI_HOST="$lan_host"` and `LAVISH_AXI_LINK_HOST="$lan_host"`, and reports the printed `http://${lan_host}:<port>/session/...` URL only after `curl` succeeds. In a real run the worker binds the decision source before `bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>`; the validation run does not bind or arm.
 
 **Captured answer receipt**
 
