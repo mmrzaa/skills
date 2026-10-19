@@ -130,3 +130,44 @@
 
 ### 7. Parking Lot
 - None.
+
+---
+
+## Example 3 — Transcript to LAN board to Firstmate receipt
+
+**Raw transcript (excerpt)**
+
+- “The current zone demo repeats the same polygon data in two YAML files.”
+- “We should make `zones.yaml` the single source, but first check whether the engine and UI already read different files.”
+- “The simulation showed fast and slow tags behaving differently; we need the data before choosing a sensitivity rule.”
+- “Later, a floor-plan receiver-placement simulator could be useful.”
+
+**Read-only reality check before review**
+
+| Key | Action | Status | Evidence |
+|---|---|---|---|
+| `dec.zone-source` | Choose one configuration owner | `partial` | `event-zone-architecture-review/report.md` describes a single `zones.yaml` design, but the checked repository still has separate runtime/UI references; implementation is not proven. |
+| `backlog.1` | Audit update-rate and time-window behavior | `not started` | No completed experiment report or implementation test was found in the relevant checkout; the transcript's fast/slow observation remains meeting evidence. |
+| `backlog.2` | Explore receiver-placement planning | `not started` | Current reports classify this as future work; no planning tool or validated fixture was found. |
+
+**Board cards**
+
+- `dec.zone-source` — **Choose the configuration source of truth**. Options compare “one shared `zones.yaml`” with “retain separate files until an adapter is verified”; the recommendation favors the shared file, while the card shows the `partial` evidence and lets the reviewer add a note.
+- `backlog.1` — **Measure time/update-rate behavior before setting sensitivity**. Project `event-detection`, kind `scout`, route `Main home`, status `not started`. Dispositions are `approve-and-dispatch-now`, `approve-but-queue`, `park-until-date`, and `drop`.
+- `backlog.2` — **Bound a receiver-placement planning scout**. Project `event-detection`, kind `scout`, route `Main home`, status `not started`; the card identifies it as a future idea rather than a current commitment.
+
+The worker opens the HTML with the current `lavish-axi` command, sets `LAVISH_AXI_HOST` and `LAVISH_AXI_LINK_HOST` from `config/lavish-axi-host`, and reports the printed `http://10.10.0.150:<port>/session/...` URL only after `curl` succeeds. In a real run the worker binds the decision source before `bin/fm-procevent-lavish.sh arm <artifact.html> --for <task-id>`; the validation run does not bind or arm.
+
+**Captured answer receipt**
+
+```text
+key=backlog.1
+choice=approve-but-queue
+note=Collect a baseline across both fast and slow tags before tuning thresholds.
+status=not started (at board build)
+project=event-detection
+kind=scout
+route=Main home
+```
+
+Firstmate then files `backlog.1` as queued with the recorded project, kind, and route. It does not dispatch it. A later `approve-and-dispatch-now` answer would file and dispatch through the normal lifecycle; `park-until-date` would file and apply the exact dated hold; `drop` would record the disposition without filing. The board answer is the authorization boundary, and the worker's recommendation alone never creates work.
