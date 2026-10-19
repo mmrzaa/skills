@@ -105,7 +105,7 @@ This is required for every supervisor decision and every proposed backlog item, 
    - **partial** — some DoD is present, with the remaining gap named; or
    - **not started** — the repository was available for inspection and no implementation/evidence for the DoD was found.
 
-If access is unavailable or evidence is contradictory, retain the closest required status only with a conspicuous **verification limitation**; never call an inaccessible item done. Absence is not evidence when a repository or report could not be read.
+If the repository or report cannot be accessed, use the permitted status `partial` and append this exact visible text: **Verification limitation: the required repository/report was unavailable, so this status is provisional and is not evidence that the work is absent.** Never call an inaccessible item done or silently label it not started. If evidence is contradictory, use `partial` with a visible **Verification limitation** that names the contradiction. Absence is not evidence when a repository or report could not be read.
 
 Add an **Actionable Reality Check** matrix to the markdown report. Each row contains `Key`, `Status`, `Evidence`, `Gap or limitation`, and `Checked at`. Put the same status and short evidence citations inline on the corresponding board card so a decision is informed without opening a second report.
 
@@ -146,7 +146,7 @@ The board is an HTML review surface, not a markdown page pasted into a browser. 
 
 1. Run `lavish-axi --help`. Before writing HTML, run `lavish-axi design` and open every matching current playbook. This board needs at least `input`, `comparison`, and `table`; add `plan` when the meeting contains a substantial plan.
 2. Inspect the project being represented for an existing design system. If none exists, use the current CLI-recommended Tailwind browser runtime and DaisyUI versions; do not assume a stale version. Use semantic colors and responsive layout. Keep the HTML portable and self-contained apart from the documented CDN fallback.
-3. Write the artifact beside the meeting report in the active task's data directory (or a task-specific temporary directory during validation). Use semantic headings, `fieldset`/`legend`, labeled native radios, date inputs, textareas, buttons, `details` disclosures, visible focus states, keyboard operation, readable contrast, and status text that is not color-only. Keep long evidence and paths wrapped on narrow screens.
+3. Write the artifact beside the meeting report in the active task's data directory (or a task-specific temporary directory during validation). Use semantic headings, `fieldset`/`legend`, labeled native radios, date inputs, textareas, buttons, `details` disclosures, visible focus states, keyboard operation, readable contrast, and status text that is not color-only. Keep long evidence and paths wrapped on narrow screens. Treat every transcript, repository, report, path, title, note, and citation value as untrusted: render it with DOM `textContent` (or an equivalent HTML-context encoder), never concatenate it into `innerHTML`, HTML attributes, or markup. Put data in JavaScript only through a JSON serializer that escapes `<`, `>`, `&`, U+2028, and U+2029 (so `</script>` cannot terminate an inline script), and never interpolate raw values into JavaScript, CSS, or event-handler source. Apply these rules to every value, including card data and receipt text.
 4. Render a concise overview and evidence/hypothesis summary, then the actionable cards. Do not hide a card behind a filter or require interaction to see its current status/evidence.
 
 ### Card invariants
@@ -201,13 +201,25 @@ Include the selected human label and the exact note in `text`, not only the slug
 
 ## LAN hosting and liveness gate
 
-The only acceptable board host is the active Firstmate home's `config/lavish-axi-host`. Read and trim that file at run time; never hard-code today's `10.10.0.150`, and never substitute a tunnel or loopback address. Refuse/report a limitation when the value is blank, `localhost`, a loopback address, a wildcard (`0.0.0.0` or `::`), or another non-LAN value.
+The only acceptable board host is the active Firstmate home's `config/lavish-axi-host`. Read and trim that file at run time; never hard-code today's `10.10.0.150`, and never substitute a tunnel or loopback address. Refuse/report a limitation when the value is blank, contains a scheme, is a hostname, `localhost`, a loopback address, a wildcard (`0.0.0.0` or `::`), a tunnel/public address, or another non-LAN value. For this workflow, fail closed unless the value is an exact IP literal in RFC1918 IPv4 space (`10/8`, `172.16/12`, or `192.168/16`) or IPv6 ULA space (`fc00::/7`); this deliberately rejects public, tunnel, link-local, and other non-LAN addresses.
 
-Use the current CLI's concrete host controls, for example:
+Validate before exporting, using the standard library rather than a string-prefix check:
 
 ```sh
 lan_host=$(tr -d '[:space:]' < "$FM_HOME/config/lavish-axi-host")
-# Validate lan_host against loopback/wildcard/tunnel rules before this point.
+LAN_HOST="$lan_host" python3 - <<'PY'
+import ipaddress, os, sys
+value = os.environ["LAN_HOST"]
+try:
+    address = ipaddress.ip_address(value)
+except ValueError:
+    sys.exit("invalid LAN host: expected a private IP literal")
+allowed = ((address.version == 4 and any(address in ipaddress.ip_network(network)
+            for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")))
+           or (address.version == 6 and address in ipaddress.ip_network("fc00::/7"))
+if not allowed:
+    sys.exit("refusing non-LAN, loopback, wildcard, tunnel, or public host")
+PY
 export LAVISH_AXI_HOST="$lan_host"
 export LAVISH_AXI_LINK_HOST="$lan_host"
 output=$(lavish-axi "$artifact.html" --no-open 2>&1)
